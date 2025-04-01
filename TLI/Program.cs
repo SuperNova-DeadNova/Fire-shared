@@ -1,26 +1,14 @@
-﻿/*
-    Copyright 2010 MCSharp team (Modified for use with MCZall/MCLawl/MCForge)
-    
-    Dual-licensed under the Educational Community License, Version 2.0 and
-    the GNU General Public License, Version 3 (the "Licenses"); you may
-    not use this file except in compliance with the Licenses. You may
-    obtain a copy of the Licenses at
-    
-    https://opensource.org/license/ecl-2-0/
-    https://www.gnu.org/licenses/gpl-3.0.html
-    
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the Licenses are distributed on an "AS IS"
-    BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-    or implied. See the Licenses for the specific language governing
-    permissions and limitations under the Licenses.
- */
 using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using Flames.UI;
-namespace Flames.Cli
+using Flames.Added.UI;
+using Terminal = System.Console;
+using TerminalColor = System.ConsoleColor;
+using TerminalSpecialKey = SystemConsoleSpecialKey;
+using Context = System.Environment;
+using TerminalCancelEventArgs = System.ConsoleCancelEventArgs;
+namespace Flames.TerminalLineInterface
 {
     public static class Program
     {
@@ -28,22 +16,20 @@ namespace Flames.Cli
         public static void Main(string[] args)
         {
             SetCurrentDirectory();
-            // If Flames_.dll is missing, a FileNotFoundException will get thrown for Flames dll
             try
             {
-                EnableCLIMode();
+                EnableTLIMode();
             }
             catch (FileNotFoundException ex)
             {
-                Console.WriteLine("Cannot start server as {0} is missing from {1}",
-                                  GetFilename(ex.FileName), Environment.CurrentDirectory); 
-                Console.WriteLine("Download from " + Updater.UploadsURL);
-                Console.WriteLine("Press any key to exit...");
-                Console.ReadKey(true);
+                Terminal.WriteLine("Cannot start server as {0} is missing from {1}",
+                                  GetFilename(ex.FileName), Context.CurrentDirectory); 
+                Terminal.WriteLine("Download from " + Updater.UploadsURL);
+                Terminal.WriteLine("Press any key to exit...");
+                Terminal.ReadKey(true);
                 return;
             }
-            // separate method, in case Flames_.dll is missing
-            StartCLI();
+            StartTLI();
         }
         public static string GetFilename(string rawName)
         {
@@ -61,19 +47,14 @@ namespace Flames.Cli
             string path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             try
             {
-                Environment.CurrentDirectory = path;
+                Context.CurrentDirectory = path;
             }
             catch
             {
-                // assembly.Location usually gives full path of the .exe, but has issues with mkbundle
-                //   https://mono-devel-list.ximian.narkive.com/KfCAxY1F/mkbundle-assembly-getentryassembly
-                //   https://stackoverflow.com/questions/57648241/reliably-get-location-of-bundled-executable-on-linux
-                // Rather than trying to guess when this issue happens, just don't bother at all
-                //  (since most users will not be trying to run .exe from a different folder anyways)
-                Console.WriteLine("Failed to set working directory to '{0}', running in current directory..", path);
+                Terminal.WriteLine("Failed to set working directory to '{0}', running in current directory..", path);
             }
         }
-        public static void EnableCLIMode()
+        public static void EnableTLIMode()
         {
             try
             {
@@ -82,11 +63,10 @@ namespace Flames.Cli
             catch (Exception ex)
             {
                 Logger.LogError(ex);
-                // in case user is running CLI with older Flames dll which lacked CLIMode field
             }
             Server.RestartPath = Assembly.GetEntryAssembly().Location;
         }
-        public static void StartCLI()
+        public static void StartTLI()
         {
             FileLogger.Init();
             AppDomain.CurrentDomain.UnhandledException += GlobalExHandler;
@@ -94,12 +74,12 @@ namespace Flames.Cli
             {
                 Logger.LogHandler += LogMessage;
                 Updater.NewerVersionDetected += LogNewerVersionDetected;
-                EnableCLIMode();
+                EnableTLIMode();
                 Server.Start();
-                Console.Title = Colors.Strip(Server.Config.Name) + " - " + Colors.Strip(Server.SoftwareNameVersioned);
-                Console.CancelKeyPress += OnCancelKeyPress;
+                Terminal.Title = Colors.Strip(Server.Config.Name) + " - " + Colors.Strip(Server.SoftwareNameVersioned);
+                Terminal.CancelKeyPress += OnCancelKeyPress;
                 CheckNameVerification();
-                ConsoleLoop();
+                TerminalLoop();
             }
             catch (Exception e)
             {
@@ -107,17 +87,16 @@ namespace Flames.Cli
                 FileLogger.Flush(null);
             }
         }
-        public static void OnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        public static void OnCancelKeyPress(object sender, TerminalCancelEventArgs e)
         {
             switch (e.SpecialKey)
             {
-                case ConsoleSpecialKey.ControlBreak:
-                    // Cannot set e.Cancel for this one
+                case TerminalSpecialKey.ControlBreak:
                     Write("&e-- Server shutdown (Ctrl+Break) --");
                     Thread stopThread = Server.Stop(false, Server.Config.DefaultShutdownMessage);
                     stopThread.Join();
                     break;
-                case ConsoleSpecialKey.ControlC:
+                case TerminalSpecialKey.ControlC:
                     e.Cancel = true;
                     Write("&e-- Server shutdown (Ctrl+C) --");
                     Server.Stop(false, Server.Config.DefaultShutdownMessage);
@@ -156,7 +135,6 @@ namespace Flames.Cli
                           + " - See " + FileLogger.ErrorLogPath + " for more details.");
                     break;
                 case LogType.BackgroundActivity:
-                    // ignore these messages
                     break;
                 case LogType.Warning:
                     Write("&e" + CurrentDate() + message);
@@ -166,21 +144,16 @@ namespace Flames.Cli
                     break;
             }
         }
-        public static string MsgPrefix = Environment.NewLine + "Message: ";
+        public static string MsgPrefix = Context.NewLine + "Message: ";
         public static string ExtractErrorMessage(string raw)
         {
-            // Error messages are usually structured like so:
-            //   Type: whatever
-            //   Message: whatever
-            //   Something: whatever
-            // this code extracts the Message line from the raw message
             int beg = raw.IndexOf(MsgPrefix);
             if (beg == -1)
             {
                 return "";
             }
             beg += MsgPrefix.Length;
-            int end = raw.IndexOf(Environment.NewLine, beg);
+            int end = raw.IndexOf(Context.NewLine, beg);
             if (end == -1)
             {
                 return "";
@@ -199,25 +172,20 @@ namespace Flames.Cli
         {
             Write(Colors.Strip(Server.SoftwareName) + " &cupdate available! Update by replacing with the files from " + Updater.UploadsURL);
         }
-        public static void ConsoleLoop()
+        public static void TerminalLoop()
         {
             int eofs = 0;
             while (true)
             {
                 try
                 {
-                    string msg = Console.ReadLine();
-                    // null msg is triggered in two cases:
-                    //   a) when pressing Ctrl+C to shutdown CLI on Windows
-                    //   b) underlying terminal provides a bogus EOF
-                    // b) actually happens very rarely (e.g. a few times on startup with wine mono),
-                    // so ignore the first few EOFs to workaround this case
+                    string msg = Terminal.ReadLine();
                     if (msg == null)
                     {
                         eofs++;
                         if (eofs >= 15) 
                         { 
-                            Write("&e** EOF, console no longer accepts input **"); 
+                            Write("&e** EOF, terminal no longer accepts input **"); 
                             break; 
                         }
                         continue;
@@ -225,11 +193,11 @@ namespace Flames.Cli
                     msg = msg.Trim();
                     if (msg == "/")
                     {
-                        UIHelpers.RepeatCommand();
+                        UIHelpers.RepeatRequest();
                     }
                     else if (msg.Length > 0 && msg[0] == '/')
                     {
-                        UIHelpers.HandleCommand(msg.Substring(1));
+                        UIHelpers.HandleRequest(msg.Substring(1));
                     }
                     else
                     {
@@ -238,10 +206,6 @@ namespace Flames.Cli
                 }
                 catch (Exception ex)
                 {
-                    // ArgumentException is raised on Mono when you:
-                    //  1) Type a message into a large CLI window
-                    //  2) Resize the CLI window to be smaller
-                    //  3) Try to backspace when the message is bigger than the smaller resized CLI window
                     Logger.LogError(ex);
                 }
             }
@@ -256,68 +220,67 @@ namespace Flames.Cli
                 char curCol = col;
                 string part = UIHelpers.OutputPart(ref col, ref index, message);
                 if (part.Length == 0) continue;
-                ConsoleColor color = GetConsoleColor(curCol);
-                if (color == ConsoleColor.White)
+                TerminalColor color = GetTerminalColor(curCol);
+                if (color == TerminalColor.White)
                 {
-                    // show in user's preferred console text color
-                    Console.ResetColor();
+                    Terminal.ResetColor();
                 }
                 else
                 {
-                    Console.ForegroundColor = color;
+                    Terminal.ForegroundColor = color;
                 }
-                Console.Write(part);
+                Terminal.Write(part);
             }
-            Console.ResetColor();
-            Console.WriteLine();
+            Terminal.ResetColor();
+            Terminal.WriteLine();
         }
-        public static ConsoleColor GetConsoleColor(char c)
+        public static TerminalColor GetTerminalColor(char c)
         {
             if (c == 'S')
             {
-                return ConsoleColor.White;
+                return TerminalColor.White;
             }
             Colors.Map(ref c);
             switch (c)
             {
                 case '0': 
-                    return ConsoleColor.DarkGray; // black text on black background is unreadable
+                    return TerminalColor.DarkGray;
                 case '1': 
-                    return ConsoleColor.DarkBlue;
+                    return TerminalColor.DarkBlue;
                 case '2':
-                    return ConsoleColor.DarkGreen;
+                    return TerminalColor.DarkGreen;
                 case '3': 
-                    return ConsoleColor.DarkCyan;
+                    return TerminalColor.DarkCyan;
                 case '4': 
-                    return ConsoleColor.DarkRed;
+                    return TerminalColor.DarkRed;
                 case '5': 
-                    return ConsoleColor.DarkMagenta;
+                    return TerminalColor.DarkMagenta;
                 case '6': 
-                    return ConsoleColor.DarkYellow;
+                    return TerminalColor.DarkYellow;
                 case '7': 
-                    return ConsoleColor.Gray;
+                    return TerminalColor.Gray;
                 case '8': 
-                    return ConsoleColor.DarkGray;
+                    return TerminalColor.DarkGray;
                 case '9': 
-                    return ConsoleColor.Blue;
+                    return TerminalColor.Blue;
                 case 'a': 
-                    return ConsoleColor.Green;
+                    return TerminalColor.Green;
                 case 'b': 
-                    return ConsoleColor.Cyan;
+                    return TerminalColor.Cyan;
                 case 'c': 
-                    return ConsoleColor.Red;
+                    return TerminalColor.Red;
                 case 'd': 
-                    return ConsoleColor.Magenta;
+                    return TerminalColor.Magenta;
                 case 'e': 
-                    return ConsoleColor.Yellow;
+                    return TerminalColor.Yellow;
                 case 'f': 
-                    return ConsoleColor.White;
+                    return TerminalColor.White;
                 default:
                     if (!Colors.IsDefined(c))
                     {
-                        return ConsoleColor.White;
+                        return TerminalColor.White;
                     }
-                    return GetConsoleColor(Colors.Get(c).Fallback);
+                    return GetTerminalColor(Colors.Get(c).Fallback);
             }
         }
     }
