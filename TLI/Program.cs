@@ -2,10 +2,11 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using Flames.Added;
 using Flames.Added.UI;
 using Terminal = System.Console;
 using TerminalColor = System.ConsoleColor;
-using TerminalSpecialKey = SystemConsoleSpecialKey;
+using TerminalSpecialKey = System.ConsoleSpecialKey;
 using Context = System.Environment;
 using TerminalCancelEventArgs = System.ConsoleCancelEventArgs;
 namespace Flames.TerminalLineInterface
@@ -58,7 +59,7 @@ namespace Flames.TerminalLineInterface
         {
             try
             {
-                Server.CLIMode = true;
+                Server.TLIMode = true;
             }
             catch (Exception ex)
             {
